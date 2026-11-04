@@ -1,0 +1,82 @@
+# Event bot configuration. Edit freely; the bot reads this on every run.
+
+# How far ahead to look for events (days).
+lookahead_days: 90
+
+# Send an email even when nothing new was found (so you know the bot is alive).
+email_when_empty: true
+
+# What counts as an interesting event. Matched case-insensitively against
+# the event title and description.
+keywords:
+  hackathon: [hackathon, hack night, hack day, buildathon, build night, build day, hack week, "hack-a-thon", codefest, game jam]
+  networking: [networking, mixer, happy hour, meetup, meet-up, social, founders night, demo night, demo day, "drinks", "afterparty", "after party", "community night", "fireside"]
+  conference: [summit, conference, devday, dev day, world tour, "local", roadshow, "user group", forum, expo]
+
+# ---------------------------------------------------------------------------
+# Luma. Each entry is a luma.com page: a city ("sf", "nyc"), a category
+# ("ai", "tech") or any calendar slug (e.g. a company's Luma calendar).
+# Luma events are only kept if they match one of the keywords above, and
+# networking events must be in person.
+# ---------------------------------------------------------------------------
+luma:
+  pages:
+    - ai
+    - tech
+    - sf
+    - nyc
+    - seattle
+    - boston
+    - austin
+    - la
+    - chicago
+  # Extra Luma search terms (luma.com/discover?q=...). Leave empty to skip.
+  search_terms:
+    - hackathon
+    - AI mixer
+    - founders networking
+
+# ---------------------------------------------------------------------------
+# Company event pages. `url` is scraped every day. `linkedin` is the company's
+# LinkedIn slug (linkedin.com/company/<slug>/events) and is included in the
+# email as a one-click link (LinkedIn blocks automated scraping, see README).
+# Companies listed with only `linkedin` still show up in the quick-links list.
+# ---------------------------------------------------------------------------
+companies:
+  # FAANG / big tech
+  - {name: Google, url: "https://developers.google.com/events", linkedin: google}
+  - {name: Google Cloud, url: "https://cloud.google.com/events", linkedin: google-cloud}
+  - {name: Meta, url: "https://developers.facebook.com/events/", linkedin: meta}
+  - {name: Amazon / AWS, url: "https://aws.amazon.com/events/", linkedin: amazon-web-services}
+  - {name: Apple, url: "https://developer.apple.com/events/", linkedin: apple}
+  - {name: Netflix, linkedin: netflix}
+  - {name: Microsoft Reactor, url: "https://developer.microsoft.com/en-us/reactor/", linkedin: microsoft}
+  - {name: NVIDIA, url: "https://www.nvidia.com/en-us/events/", linkedin: nvidia}
+  # AI labs
+  - {name: OpenAI, url: "https://openai.com/events/", linkedin: openai}
+  - {name: Anthropic, url: "https://www.anthropic.com/events", linkedin: anthropicresearch}
+  - {name: Cohere, url: "https://cohere.com/events", linkedin: cohere-ai}
+  - {name: Mistral AI, linkedin: mistralai}
+  - {name: Hugging Face, url: "https://huggingface.co/events", linkedin: huggingface}
+  # Data / databases
+  - {name: MongoDB, url: "https://www.mongodb.com/events", linkedin: mongodbinc}
+  - {name: Neo4j, url: "https://neo4j.com/events/", linkedin: neo4j}
+  - {name: Databricks, url: "https://www.databricks.com/events", linkedin: databricks}
+  - {name: Snowflake, url: "https://www.snowflake.com/en/events/", linkedin: snowflake-computing}
+  - {name: Redis, url: "https://redis.io/events/", linkedin: redis}
+  - {name: Elastic, url: "https://www.elastic.co/events", linkedin: elastic-co}
+  - {name: Confluent, url: "https://www.confluent.io/events/", linkedin: confluent}
+  - {name: Pinecone, url: "https://www.pinecone.io/events/", linkedin: pinecone-io}
+  - {name: Weaviate, url: "https://weaviate.io/community/events", linkedin: weaviate-io}
+  - {name: Supabase, url: "https://supabase.com/events", linkedin: supabase}
+  # Dev tools / product
+  - {name: Vercel, url: "https://vercel.com/events", linkedin: vercel}
+  - {name: Cloudflare, url: "https://www.cloudflare.com/events/", linkedin: cloudflare}
+  - {name: LangChain, url: "https://www.langchain.com/events", linkedin: langchain}
+  - {name: LlamaIndex, linkedin: llamaindex}
+  - {name: Datadog, url: "https://www.datadoghq.com/events/", linkedin: datadog}
+  - {name: GitHub, url: "https://resources.github.com/events/", linkedin: github}
+  - {name: Stripe, url: "https://stripe.com/sessions", linkedin: stripe}
+  - {name: Figma, url: "https://www.figma.com/events/", linkedin: figma}
+  - {name: Notion, linkedin: notionhq}
+  - {name: Product Hunt, linkedin: producthunt}

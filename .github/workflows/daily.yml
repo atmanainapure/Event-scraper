@@ -1,0 +1,51 @@
+name: Daily event digest
+
+on:
+  schedule:
+    - cron: "17 13 * * *" # every day at 13:17 UTC (~6am PT / 9am ET)
+  workflow_dispatch: {} # "Run workflow" button for manual runs
+
+permissions:
+  contents: write # to commit data/seen.json so you never get the same event twice
+
+concurrency:
+  group: event-bot
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Scrape and email
+        env:
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        run: |
+          # Fall back to Gmail defaults when the optional secrets are unset.
+          export SMTP_HOST="${SMTP_HOST:-smtp.gmail.com}"
+          export SMTP_PORT="${SMTP_PORT:-465}"
+          python -m event_bot
+
+      - name: Remember emailed events
+        run: |
+          git config user.name "event-bot"
+          git config user.email "event-bot@users.noreply.github.com"
+          git add data/seen.json
+          git diff --cached --quiet || git commit -m "chore: update seen events [skip ci]"
+          git push
