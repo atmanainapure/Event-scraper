@@ -3,7 +3,12 @@ name: Daily event digest
 on:
   schedule:
     - cron: "17 13 * * *" # every day at 13:17 UTC (~6am PT / 9am ET)
-  workflow_dispatch: {} # "Run workflow" button for manual runs
+  workflow_dispatch: # "Run workflow" button for manual runs
+    inputs:
+      resend_all:
+        description: "Include events that were already emailed before"
+        type: boolean
+        default: false
 
 permissions:
   contents: write # to commit data/seen.json so you never get the same event twice
@@ -40,7 +45,7 @@ jobs:
           # Fall back to Gmail defaults when the optional secrets are unset.
           export SMTP_HOST="${SMTP_HOST:-smtp.gmail.com}"
           export SMTP_PORT="${SMTP_PORT:-465}"
-          python -m event_bot
+          if [ "${{ inputs.resend_all }}" = "true" ]; then python -m event_bot --all; else python -m event_bot; fi
 
       - name: Save digest for review
         if: always()

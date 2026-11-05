@@ -40,6 +40,7 @@ def _to_event(o: dict) -> Event | None:
         start = None
     geo = o.get("geo_address_info") or {}
     location = geo.get("city_state") or geo.get("full_address") or geo.get("city") or ""
+    geo_text = " ".join(str(geo.get(k) or "") for k in ("full_address", "address", "city", "region", "city_state"))
     loc_type = (o.get("location_type") or "").lower()
     in_person = None
     if loc_type:
@@ -52,6 +53,7 @@ def _to_event(o: dict) -> Event | None:
         location=location or ("Online" if in_person is False else ""),
         in_person=in_person,
         description=(o.get("description") or o.get("description_short") or "")[:500],
+        extra={"geo": geo_text.strip()},
     )
 
 
@@ -71,6 +73,7 @@ def _scrape_page(url: str, label: str, browser: Browser) -> list[Event]:
                 _walk(blob, found)
     for ev in found.values():
         ev.source = f"Luma ({label})"
+        ev.extra["page"] = label
     log.info("Luma %-22s -> %d events", label, len(found))
     return list(found.values())
 

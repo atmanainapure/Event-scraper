@@ -25,6 +25,18 @@ SEEN_PATH = ROOT / "data" / "seen.json"
 log = logging.getLogger("event_bot")
 
 
+# Luma city pages whose events are in that city even when the address is hidden.
+LUMA_CITY_PAGES = {"nyc": "New York"}
+
+
+def in_area(ev: Event, places: list[str]) -> bool:
+    if not ev.location and ev.extra.get("page") in LUMA_CITY_PAGES and ev.in_person is not False:
+        ev.location = LUMA_CITY_PAGES[ev.extra["page"]]
+    text = " ".join((ev.location, ev.extra.get("geo", ""), ev.title, ev.description)).lower()
+    pattern = r"(?<![a-z])(" + "|".join(re.escape(p.lower()) for p in places) + r")(?![a-z])"
+    return re.search(pattern, text) is not None
+
+
 def keep(ev: Event, cfg: dict) -> bool:
     now = datetime.now(timezone.utc)
     if ev.start:
@@ -37,8 +49,13 @@ def keep(ev: Event, cfg: dict) -> bool:
             return False  # Luma is huge; only keep matching events
     elif not ev.kind:
         ev.kind = "event"
-    # Networking only makes sense in person; hackathons can be anywhere.
-    if ev.kind != "hackathon" and ev.in_person is False:
+    places = cfg.get("locations") or []
+    if places:
+        # Location-restricted: in-person events in the chosen area only.
+        if ev.in_person is False or not in_area(ev, places):
+            return False
+    elif ev.kind != "hackathon" and ev.in_person is False:
+        # No area set: networking only makes sense in person; hackathons can be anywhere.
         return False
     ev.tag = two_word_tag(ev)
     return True

@@ -37,6 +37,9 @@ recorded in `data/seen.json`, so you never get the same one twice.
 
 Everything lives in [`config.yaml`](config.yaml):
 
+- `locations`: places to keep events for (currently NYC — Manhattan, Brooklyn, Queens — and
+  New Jersey). Events elsewhere, online, or with no recognizable location are dropped. Delete
+  the list to get events from everywhere.
 - `luma.pages`: Luma cities (`sf`, `nyc`, `seattle`, ...), categories (`ai`, `tech`) or any Luma
   calendar slug. Add your own city here.
 - `luma.search_terms`: extra Luma searches.

@@ -6,6 +6,27 @@ lookahead_days: 90
 # Send an email even when nothing new was found (so you know the bot is alive).
 email_when_empty: true
 
+# Only keep events in these places. Matched (case-insensitive, whole words)
+# against the event's location, title and description. Events with no
+# recognizable location, and online events, are dropped. Remove this block
+# to get events from everywhere again.
+locations:
+  - nyc
+  - new york
+  - manhattan
+  - brooklyn
+  - queens
+  - long island city
+  - astoria
+  - new jersey
+  - nj
+  - jersey city
+  - hoboken
+  - newark
+  - princeton
+  - new brunswick
+  - montclair
+
 # What counts as an interesting event. Matched case-insensitively against
 # the event title and description.
 keywords:
@@ -21,15 +42,9 @@ keywords:
 # ---------------------------------------------------------------------------
 luma:
   pages:
+    - nyc
     - ai
     - tech
-    - sf
-    - nyc
-    - seattle
-    - boston
-    - austin
-    - la
-    - chicago
   # Luma has no public search page (luma.com/search 404s, its search API needs
   # a login), so keyword matching on the pages above is used instead.
   search_terms: []
