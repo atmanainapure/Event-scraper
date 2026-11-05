@@ -30,11 +30,9 @@ luma:
     - austin
     - la
     - chicago
-  # Extra Luma search terms (luma.com/discover?q=...). Leave empty to skip.
-  search_terms:
-    - hackathon
-    - AI mixer
-    - founders networking
+  # Luma has no public search page (luma.com/search 404s, its search API needs
+  # a login), so keyword matching on the pages above is used instead.
+  search_terms: []
 
 # ---------------------------------------------------------------------------
 # Company event pages. `url` is scraped every day. `linkedin` is the company's
