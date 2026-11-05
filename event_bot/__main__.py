@@ -1,4 +1,5 @@
-"""Daily event bot: scrape Luma + company event pages, email what's new.
+"""Daily event bot: scrape Luma, company event pages, Google, Devpost and MLH;
+email the top NYC/NJ hackathons ranked by internship-networking ROI.
 
 Usage:
     python -m event_bot              # scrape and send email
@@ -15,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-from . import company, emailer, luma
+from . import company, emailer, hackathons, luma, ranker
 from .classify import detect_kind, two_word_tag
 from .fetch import Browser
 from .models import Event
@@ -43,7 +44,7 @@ def keep(ev: Event, cfg: dict) -> bool:
         start = ev.start if ev.start.tzinfo else ev.start.replace(tzinfo=timezone.utc)
         if start < now - timedelta(days=1) or start > now + timedelta(days=cfg.get("lookahead_days", 90)):
             return False
-    ev.kind = detect_kind(ev, cfg["keywords"])
+    ev.kind = ev.extra.get("force_kind") or detect_kind(ev, cfg["keywords"])
     if ev.source.startswith("Luma"):
         if not ev.kind:
             return False  # Luma is huge; only keep matching events
@@ -104,15 +105,30 @@ def main() -> None:
         c_events, c_err = company.scrape(cfg.get("companies", []), browser)
     finally:
         browser.close()
+    h_events, h_err = hackathons.scrape(cfg.get("hackathon_sources", {}))
+    errors = l_err + c_err + h_err
 
-    events = dedupe([e for e in l_events + c_events if keep(e, cfg)])
+    events = dedupe([e for e in h_events + l_events + c_events if keep(e, cfg)])
     seen = load_seen()
-    new = events if args.all else [e for e in events if e.key not in seen]
-    log.info("%d relevant events, %d new", len(events), len(new))
-
+    ecfg = cfg.get("email", {})
     linkedin = [(c["name"], f"https://www.linkedin.com/company/{c['linkedin']}/events/")
                 for c in cfg.get("companies", []) if c.get("linkedin")]
-    subject, text, html_body = emailer.build(new, linkedin, l_err + c_err)
+
+    if ecfg.get("mode", "top_hackathons") == "top_hackathons":
+        hacks = [e for e in events if e.kind == "hackathon"]
+        top, method = ranker.rank(hacks, cfg.get("ranking", {}), int(ecfg.get("top_n", 5)))
+        new_keys = {r.event.key for r in top if r.event.key not in seen}
+        log.info("%d NYC/NJ hackathons found; top %d ranked by %s (%d new)",
+                 len(hacks), len(top), method, len(new_keys))
+        subject, text, html_body = emailer.build_ranked(top, new_keys, len(hacks), method, errors)
+        to_mark = [r.event for r in top]
+        should_send = bool(top) or cfg.get("email_when_empty", True)
+    else:
+        new = events if args.all else [e for e in events if e.key not in seen]
+        log.info("%d relevant events, %d new", len(events), len(new))
+        subject, text, html_body = emailer.build(new, linkedin, errors)
+        to_mark = new
+        should_send = bool(new) or cfg.get("email_when_empty", True)
 
     out = ROOT / "out"
     out.mkdir(exist_ok=True)
@@ -122,11 +138,11 @@ def main() -> None:
         log.info("Dry run: wrote %s", out / "digest.html")
         return
 
-    if new or cfg.get("email_when_empty", True):
+    if should_send:
         emailer.send(subject, text, html_body)
         log.info("Email sent: %s", subject)
     today = datetime.now(timezone.utc).date().isoformat()
-    for e in new:
+    for e in to_mark:
         seen.setdefault(e.key, today)
     save_seen(seen)
 

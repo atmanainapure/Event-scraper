@@ -27,6 +27,45 @@ locations:
   - new brunswick
   - montclair
 
+# What the daily email contains.
+#   top_hackathons: only the top_n hackathons, ranked by internship-networking ROI
+#   digest:         every new hackathon, mixer, meetup and conference (old behaviour)
+email:
+  mode: top_hackathons
+  top_n: 5
+
+# How hackathons are ranked. With an ANTHROPIC_API_KEY secret, Claude ranks them
+# using `profile`; otherwise a point score based on target_companies, recruiting
+# keywords, student focus, size and prizes is used.
+ranking:
+  profile: >-
+    University student in New York City looking for a software engineering / AI
+    internship. Wants to meet engineers and recruiters from strong tech, AI and
+    finance companies.
+  target_companies: [Google, Meta, Amazon, AWS, Apple, Microsoft, Netflix, NVIDIA, OpenAI,
+    Anthropic, MongoDB, Neo4j, Databricks, Snowflake, Datadog, Stripe, Ramp, Plaid, Brex,
+    Bloomberg, Jane Street, Two Sigma, Citadel, Hudson River Trading, D. E. Shaw, Goldman Sachs,
+    JPMorgan, Morgan Stanley, Capital One, IBM, Palantir, Scale AI, Cohere, Hugging Face, Vercel,
+    Cloudflare, Notion, Figma, Spotify, Etsy, Squarespace, Pinecone, Weaviate, LangChain,
+    Y Combinator, a16z, Microsoft Reactor, Google Cloud]
+
+# Dedicated hackathon sources.
+hackathon_sources:
+  # Google Events results (needs a SERPAPI_KEY secret; ~2 searches/day).
+  google_events_queries:
+    - hackathon New York City
+    - hackathon New Jersey
+  # Regular Google results (SERPAPI_KEY, or GOOGLE_API_KEY + GOOGLE_CSE_ID).
+  google_queries:
+    - in-person hackathon NYC
+  # Devpost in-person hackathons (no key needed).
+  devpost_queries:
+    - New York
+    - NYC
+    - New Jersey
+  # Major League Hacking student hackathons (no key needed).
+  mlh: true
+
 # What counts as an interesting event. Matched case-insensitively against
 # the event title and description.
 keywords:

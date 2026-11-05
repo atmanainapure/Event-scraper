@@ -88,6 +88,52 @@ def build(events: list[Event], linkedin_links: list[tuple[str, str]], errors: li
     return subject, "\n".join(text_lines), "\n".join(h)
 
 
+def build_ranked(top, new_keys: set, total: int, method: str, errors: list[str]) -> tuple[str, str, str]:
+    """Email with only the top-N hackathons ranked by internship-networking ROI."""
+    today = datetime.now().strftime("%b %d, %Y")
+    n_new = sum(1 for r in top if r.event.key in new_keys)
+    if not top:
+        subject = f"🏆 No upcoming NYC/NJ hackathons found – {today}"
+    elif n_new:
+        subject = f"🏆 Top {len(top)} NYC/NJ hackathons for internship networking ({n_new} new) – {today}"
+    else:
+        subject = f"🏆 Your top {len(top)} NYC/NJ hackathons (no change) – {today}"
+    how = "ranked by Claude" if method == "Claude" else "ranked by sponsor, recruiting, size and student-focus signals"
+    h = [
+        "<div style='font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;color:#222'>",
+        f"<h2 style='margin-bottom:4px'>Top {len(top)} hackathons for internship networking</h2>",
+        f"<p style='color:#666;margin-top:0'>In-person, NYC &amp; New Jersey · {total} upcoming hackathons "
+        f"found on Google, Devpost, MLH, Luma and company pages · {html.escape(how)} · {html.escape(today)}</p>",
+    ]
+    t = [f"Top {len(top)} NYC/NJ hackathons for internship networking – {today}", f"({total} found, {how})", ""]
+    if not top:
+        h.append("<p>No upcoming in-person hackathons in NYC/NJ were found today.</p>")
+        t.append("No upcoming in-person hackathons in NYC/NJ were found today.")
+    h.append("<ol style='padding-left:20px'>")
+    for r in top:
+        e = r.event
+        meta = " · ".join(x for x in (_when(e), _where(e), e.source) if x)
+        badge = ("<span style='background:#e6f7ec;color:#137333;border-radius:4px;padding:1px 6px;"
+                 "font-size:11px;font-weight:700;margin-right:4px'>NEW</span>") if e.key in new_keys else ""
+        h.append(
+            "<li style='margin-bottom:14px'>"
+            f"{badge}<span style='background:#eef3ff;color:#2952cc;border-radius:4px;padding:1px 6px;font-size:12px;font-weight:600'>{html.escape(e.tag)}</span> "
+            f"<a href='{html.escape(e.url, quote=True)}' style='font-weight:600;color:#111'>{html.escape(e.title)}</a><br>"
+            f"<span style='color:#666;font-size:13px'>{html.escape(meta)}</span><br>"
+            f"<span style='font-size:13px'><b>Why it's worth it:</b> {html.escape(r.reason)}</span></li>"
+        )
+        t.append(f"{'[NEW] ' if e.key in new_keys else ''}[{e.tag}] {e.title}\n  {meta}\n  Why: {r.reason}\n  {e.url}")
+    h.append("</ol>")
+    if errors:
+        h.append("<details style='color:#999;font-size:12px'><summary>Sources that failed this run "
+                 f"({len(errors)})</summary><ul>")
+        h += [f"<li>{html.escape(err)}</li>" for err in errors]
+        h.append("</ul></details>")
+        t.append(f"\n{len(errors)} source(s) failed: " + "; ".join(errors))
+    h.append("</div>")
+    return subject, "\n".join(t), "\n".join(h)
+
+
 def send(subject: str, text: str, html_body: str) -> None:
     to = os.environ["EMAIL_TO"].strip()
     user = os.environ["SMTP_USER"].strip()

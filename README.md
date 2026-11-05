@@ -33,6 +33,25 @@ recorded in `data/seen.json`, so you never get the same one twice.
    After that it runs every day at 13:17 UTC (change the `cron` line in
    `.github/workflows/daily.yml` for a different time).
 
+## Top-5 hackathon email
+
+By default the daily email contains only the **top 5 in-person NYC/NJ hackathons, ranked by
+networking ROI for landing an internship** (sponsors/recruiters from strong employers, explicit
+recruiting, student focus, size, prizes). Each has a one-line "why it's worth it". Hackathons
+that weren't in a previous email are marked **NEW**.
+
+Hackathon sources: Google (Google Events + web results), Devpost, MLH, Luma and the company pages.
+
+Optional secrets that improve it:
+
+| Secret              | What it does                                                                     |
+|---------------------|----------------------------------------------------------------------------------|
+| `SERPAPI_KEY`       | Turns on Google results (serpapi.com, free plan = 100 searches/month; bot uses ~3/day) |
+| `ANTHROPIC_API_KEY` | Claude ranks the hackathons using your `ranking.profile` instead of the point score |
+| `GOOGLE_API_KEY` + `GOOGLE_CSE_ID` | Alternative to SerpAPI for web results (Google Programmable Search) |
+
+Set `email.mode: digest` in `config.yaml` to go back to the full list of mixers, meetups and conferences.
+
 ## Customizing
 
 Everything lives in [`config.yaml`](config.yaml):
