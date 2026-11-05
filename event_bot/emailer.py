@@ -104,29 +104,47 @@ def send(subject: str, text: str, html_body: str) -> None:
     msg.set_content(text)
     msg.add_alternative(html_body, subtype="html")
 
-    try:
-        _deliver(msg, host, port, user, password)
-    except (smtplib.SMTPServerDisconnected, smtplib.SMTPAuthenticationError) as e:
-        if port != 465:
-            raise
-        # Some networks/accounts behave better on STARTTLS; try it once.
+    # Safe diagnostics: shapes only, never the values.
+    print(
+        f"SMTP check: host={host} port={port} user_len={len(user)} user_has_at={'@' in user} "
+        f"user_domain={user.rsplit('@', 1)[-1].lower() if '@' in user else '-'} "
+        f"pw_len={len(password)} pw_ascii={password.isascii()} pw_alnum={password.isalnum()}",
+        flush=True,
+    )
+    errors = []
+    for p, mech in ((port, None), (587, None), (465, "LOGIN"), (587, "LOGIN")):
         try:
-            _deliver(msg, host, 587, user, password)
-        except Exception:  # noqa: BLE001
-            raise RuntimeError(
-                f"Gmail login failed for {user!r} ({e}). Check that SMTP_USER is the full Gmail "
-                "address and SMTP_PASSWORD is a 16-character App Password for that same account."
-            ) from e
+            _deliver(msg, host, p, user, password, mech)
+            print(f"SMTP sent via port {p} auth={mech or 'default'}", flush=True)
+            return
+        except Exception as e:  # noqa: BLE001
+            print(f"SMTP attempt port={p} auth={mech or 'default'} failed: {type(e).__name__}: {e}", flush=True)
+            errors.append(e)
+    raise RuntimeError(
+        "Gmail login failed on every method. Check that SMTP_USER is the full Gmail address and "
+        "SMTP_PASSWORD is a 16-character App Password created on that same account."
+    ) from errors[-1]
 
 
-def _deliver(msg: EmailMessage, host: str, port: int, user: str, password: str) -> None:
+def _login(s: smtplib.SMTP, user: str, password: str, mech: str | None) -> None:
+    if mech == "LOGIN":
+        s.ehlo()
+        s.user, s.password = user, password
+        s.auth("LOGIN", s.auth_login, initial_response_ok=False)
+    else:
+        s.login(user, password)
+
+
+def _deliver(msg: EmailMessage, host: str, port: int, user: str, password: str, mech: str | None = None) -> None:
     ctx = ssl.create_default_context()
     if port == 465:
         with smtplib.SMTP_SSL(host, port, context=ctx, timeout=30) as s:
-            s.login(user, password)
+            print(f"  server auth methods: {s.ehlo() and s.esmtp_features.get('auth', '?')}", flush=True)
+            _login(s, user, password, mech)
             s.send_message(msg)
     else:
         with smtplib.SMTP(host, port, timeout=30) as s:
             s.starttls(context=ctx)
-            s.login(user, password)
+            s.ehlo()
+            _login(s, user, password, mech)
             s.send_message(msg)
