@@ -46,14 +46,14 @@ companies:
   # FAANG / big tech
   - {name: Google, url: "https://developers.google.com/events", linkedin: google}
   - {name: Google Cloud, url: "https://cloud.google.com/events", linkedin: google-cloud}
-  - {name: Meta, url: "https://developers.facebook.com/events/", linkedin: meta}
+  - {name: Meta, linkedin: meta}
   - {name: Amazon / AWS, url: "https://aws.amazon.com/events/", linkedin: amazon-web-services}
   - {name: Apple, url: "https://developer.apple.com/events/", linkedin: apple}
   - {name: Netflix, linkedin: netflix}
   - {name: Microsoft Reactor, url: "https://developer.microsoft.com/en-us/reactor/", linkedin: microsoft}
   - {name: NVIDIA, url: "https://www.nvidia.com/en-us/events/", linkedin: nvidia}
   # AI labs
-  - {name: OpenAI, url: "https://openai.com/events/", linkedin: openai}
+  - {name: OpenAI, linkedin: openai}
   - {name: Anthropic, url: "https://www.anthropic.com/events", linkedin: anthropicresearch}
   - {name: Cohere, url: "https://cohere.com/events", linkedin: cohere-ai}
   - {name: Mistral AI, linkedin: mistralai}
@@ -66,7 +66,7 @@ companies:
   - {name: Redis, url: "https://redis.io/events/", linkedin: redis}
   - {name: Elastic, url: "https://www.elastic.co/events", linkedin: elastic-co}
   - {name: Confluent, url: "https://www.confluent.io/events/", linkedin: confluent}
-  - {name: Pinecone, url: "https://www.pinecone.io/events/", linkedin: pinecone-io}
+  - {name: Pinecone, linkedin: pinecone-io}
   - {name: Weaviate, url: "https://weaviate.io/community/events", linkedin: weaviate-io}
   - {name: Supabase, url: "https://supabase.com/events", linkedin: supabase}
   # Dev tools / product

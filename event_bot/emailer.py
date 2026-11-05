@@ -89,19 +89,37 @@ def build(events: list[Event], linkedin_links: list[tuple[str, str]], errors: li
 
 
 def send(subject: str, text: str, html_body: str) -> None:
-    to = os.environ["EMAIL_TO"]
-    user = os.environ["SMTP_USER"]
-    password = os.environ["SMTP_PASSWORD"]
-    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    port = int(os.environ.get("SMTP_PORT", "465"))
+    to = os.environ["EMAIL_TO"].strip()
+    user = os.environ["SMTP_USER"].strip()
+    # App passwords are shown as "abcd efgh ijkl mnop"; pasted secrets often carry
+    # those spaces or a trailing newline, which makes Gmail drop the connection.
+    password = "".join(os.environ["SMTP_PASSWORD"].split())
+    host = (os.environ.get("SMTP_HOST") or "smtp.gmail.com").strip()
+    port = int((os.environ.get("SMTP_PORT") or "465").strip())
 
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = os.environ.get("EMAIL_FROM", user)
+    msg["From"] = (os.environ.get("EMAIL_FROM") or user).strip()
     msg["To"] = to
     msg.set_content(text)
     msg.add_alternative(html_body, subtype="html")
 
+    try:
+        _deliver(msg, host, port, user, password)
+    except (smtplib.SMTPServerDisconnected, smtplib.SMTPAuthenticationError) as e:
+        if port != 465:
+            raise
+        # Some networks/accounts behave better on STARTTLS; try it once.
+        try:
+            _deliver(msg, host, 587, user, password)
+        except Exception:  # noqa: BLE001
+            raise RuntimeError(
+                f"Gmail login failed for {user!r} ({e}). Check that SMTP_USER is the full Gmail "
+                "address and SMTP_PASSWORD is a 16-character App Password for that same account."
+            ) from e
+
+
+def _deliver(msg: EmailMessage, host: str, port: int, user: str, password: str) -> None:
     ctx = ssl.create_default_context()
     if port == 465:
         with smtplib.SMTP_SSL(host, port, context=ctx, timeout=30) as s:

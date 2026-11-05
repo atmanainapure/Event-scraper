@@ -97,11 +97,11 @@ def main() -> None:
                 for c in cfg.get("companies", []) if c.get("linkedin")]
     subject, text, html_body = emailer.build(new, linkedin, l_err + c_err)
 
+    out = ROOT / "out"
+    out.mkdir(exist_ok=True)
+    (out / "digest.html").write_text(html_body)
+    (out / "digest.txt").write_text(f"Subject: {subject}\n\n{text}")
     if args.dry_run:
-        out = ROOT / "out"
-        out.mkdir(exist_ok=True)
-        (out / "digest.html").write_text(html_body)
-        (out / "digest.txt").write_text(f"Subject: {subject}\n\n{text}")
         log.info("Dry run: wrote %s", out / "digest.html")
         return
 

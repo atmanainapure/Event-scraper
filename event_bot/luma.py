@@ -85,17 +85,12 @@ def scrape(cfg: dict, browser: Browser) -> tuple[list[Event], list[str]]:
             errors.append(f"Luma page '{page}': {e}")
     for term in cfg.get("search_terms", []):
         found: dict[str, Event] = {}
-        # Public search API (undocumented, best effort) then the search page.
+        # Luma's search needs a browser session; render it and capture the API responses.
         try:
-            _walk(get(f"https://api.lu.ma/search/get-results?query={quote(term)}", as_json=True), found)
+            for ev in _scrape_page(f"{BASE}/search?q={quote(term)}", f"search: {term}", browser):
+                found.setdefault(ev.key, ev)
         except Exception as e:  # noqa: BLE001
-            log.info("Luma search API failed for %r: %s", term, e)
-        if not found:
-            try:
-                for ev in _scrape_page(f"{BASE}/discover?q={quote(term)}", f"search: {term}", browser):
-                    found.setdefault(ev.key, ev)
-            except Exception as e:  # noqa: BLE001
-                errors.append(f"Luma search '{term}': {e}")
+            errors.append(f"Luma search '{term}': {e}")
         for ev in found.values():
             ev.source = f"Luma (search: {term})"
         events += found.values()

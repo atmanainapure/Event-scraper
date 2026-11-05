@@ -42,6 +42,15 @@ jobs:
           export SMTP_PORT="${SMTP_PORT:-465}"
           python -m event_bot
 
+      - name: Save digest for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest
+          path: out/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Remember emailed events
         run: |
           git config user.name "event-bot"
