@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 EVENT_HOSTS = ("lu.ma", "luma.com", "eventbrite.", "meetup.com", "linkedin.com/events", "devpost.com",
                "hopin.com", "bevy.com", "splashthat.com", "cvent.com", "gdg.community.dev")
-EVENT_PATH = re.compile(r"/(events?|hackathons?|meetups?|summit|conference|world-?tour|devday|local|community)(/|-|$)", re.I)
+EVENT_PATH = re.compile(r"/(e|events?|hackathons?|meetups?|summit|conference|world-?tour|devday|local|community)(/|-|$)", re.I)
 NAV_TEXT = re.compile(r"^(events?|all events|view (all|more)|see (all|more)|learn more|register( now)?|"
                       r"more|details|upcoming events|past events|home|back|next|previous|read more)$", re.I)
 SKIP_TEXT = re.compile(r"on[- ]demand|recording|recap|watch now|replay|podcast|careers?|privacy|cookie|"

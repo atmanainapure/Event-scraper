@@ -13,7 +13,7 @@ TOPICS: list[tuple[str, str]] = [
     (r"\brag\b|graphrag|retrieval", "RAG"),
     (r"knowledge graph|\bgraph", "Graph"),
     (r"\bvector", "Vector"),
-    (r"\bai\b|artificial intelligence|machine learning|\bml\b", "AI"),
+    (r"\bai\b|artificial intelligence|machine learning|\bml\b|gemini|\bgpt|claude|llama|deepmind", "AI"),
     (r"\bdata\b|analytics|database|\bsql\b", "Data"),
     (r"cloud|serverless|kubernetes|devops", "Cloud"),
     (r"security|cyber", "Security"),

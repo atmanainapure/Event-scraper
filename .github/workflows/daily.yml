@@ -9,6 +9,10 @@ on:
         description: "Include events that were already emailed before"
         type: boolean
         default: false
+      check_url:
+        description: "Debug: explain whether this one event URL would be emailed (sends nothing)"
+        type: string
+        default: ""
 
 permissions:
   contents: write # to commit data/seen.json so you never get the same event twice
@@ -45,11 +49,14 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CHECK_URL: ${{ inputs.check_url }}
+          RESEND_ALL: ${{ inputs.resend_all }}
         run: |
           # Fall back to Gmail defaults when the optional secrets are unset.
           export SMTP_HOST="${SMTP_HOST:-smtp.gmail.com}"
           export SMTP_PORT="${SMTP_PORT:-465}"
-          if [ "${{ inputs.resend_all }}" = "true" ]; then python -m event_bot --all; else python -m event_bot; fi
+          if [ -n "$CHECK_URL" ]; then python -m event_bot --check-url "$CHECK_URL"; exit 0; fi
+          if [ "$RESEND_ALL" = "true" ]; then python -m event_bot --all; else python -m event_bot; fi
 
       - name: Save digest for review
         if: always()

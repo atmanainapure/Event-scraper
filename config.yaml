@@ -49,6 +49,11 @@ ranking:
     Cloudflare, Notion, Figma, Spotify, Etsy, Squarespace, Pinecone, Weaviate, LangChain,
     Y Combinator, a16z, Microsoft Reactor, Google Cloud]
 
+# Sites that host events on their own pages. The listing `url` is read, then
+# every link containing `link_pattern` is opened to get title, date and place.
+event_platforms:
+  - {name: Cerebral Valley, url: "https://cerebralvalley.ai/events", link_pattern: "/e/"}
+
 # Dedicated hackathon sources.
 hackathon_sources:
   # Google Events results (needs a SERPAPI_KEY secret; ~2 searches/day).

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-from . import company, emailer, hackathons, luma, ranker
+from . import company, emailer, hackathons, luma, platforms, ranker
 from .classify import detect_kind, two_word_tag
 from .fetch import Browser
 from .models import Event
@@ -38,28 +38,35 @@ def in_area(ev: Event, places: list[str]) -> bool:
     return re.search(pattern, text) is not None
 
 
-def keep(ev: Event, cfg: dict) -> bool:
+def judge(ev: Event, cfg: dict) -> str | None:
+    """Return None if the event should be kept, else the reason it is dropped."""
     now = datetime.now(timezone.utc)
     if ev.start:
         start = ev.start if ev.start.tzinfo else ev.start.replace(tzinfo=timezone.utc)
-        if start < now - timedelta(days=1) or start > now + timedelta(days=cfg.get("lookahead_days", 90)):
-            return False
+        if start < now - timedelta(days=1):
+            return f"date {start.date()} is in the past"
+        if start > now + timedelta(days=cfg.get("lookahead_days", 90)):
+            return f"date {start.date()} is beyond lookahead_days"
     ev.kind = ev.extra.get("force_kind") or detect_kind(ev, cfg["keywords"])
     if ev.source.startswith("Luma"):
         if not ev.kind:
-            return False  # Luma is huge; only keep matching events
+            return "Luma event with no hackathon/networking/conference keyword"
     elif not ev.kind:
         ev.kind = "event"
     places = cfg.get("locations") or []
     if places:
-        # Location-restricted: in-person events in the chosen area only.
-        if ev.in_person is False or not in_area(ev, places):
-            return False
+        if ev.in_person is False:
+            return "online event"
+        if not in_area(ev, places):
+            return "no NYC/NJ location found in location, title or description"
     elif ev.kind != "hackathon" and ev.in_person is False:
-        # No area set: networking only makes sense in person; hackathons can be anywhere.
-        return False
+        return "online networking event"
     ev.tag = two_word_tag(ev)
-    return True
+    return None
+
+
+def keep(ev: Event, cfg: dict) -> bool:
+    return judge(ev, cfg) is None
 
 
 def dedupe(events: list[Event]) -> list[Event]:
@@ -88,11 +95,31 @@ def save_seen(seen: dict) -> None:
     SEEN_PATH.write_text(json.dumps(seen, indent=0, sort_keys=True))
 
 
+def check_url(url: str, cfg: dict, browser: Browser) -> None:
+    """Print what the bot sees on one event page and whether it would be emailed."""
+    html = platforms._html(url, browser)
+    ev = platforms.event_from_page(url, html, "check") if html else None
+    print(f"URL: {url}")
+    if not ev:
+        print("RESULT: could not read an event from this page")
+        return
+    print(f"title: {ev.title}\nstart: {ev.start}\nlocation: {ev.location!r}\nin_person: {ev.in_person}")
+    print(f"text sample: {ev.description[:400]!r}")
+    reason = judge(ev, cfg)
+    print(f"kind: {ev.kind or '-'}  tag: {ev.tag or '-'}")
+    print("RESULT: KEPT" if reason is None else f"RESULT: DROPPED - {reason}")
+    host = url.split("/")[2]
+    covered = [p["name"] for p in cfg.get("event_platforms", []) if host in p["url"]] + \
+              [c["name"] for c in cfg.get("companies", []) if c.get("url") and host in c["url"]]
+    print("covered by source: " + (", ".join(covered) if covered else "NONE - this site is not scraped"))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="don't send email or update seen.json")
     ap.add_argument("--no-browser", action="store_true", help="skip headless Chromium fallback")
     ap.add_argument("--all", action="store_true", help="include events already emailed before")
+    ap.add_argument("--check-url", help="explain whether one event page would be kept, then exit")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -100,15 +127,22 @@ def main() -> None:
     browser = Browser()
     if args.no_browser:
         browser.available = False
+    if args.check_url:
+        try:
+            check_url(args.check_url, cfg, browser)
+        finally:
+            browser.close()
+        return
     try:
         l_events, l_err = luma.scrape(cfg.get("luma", {}), browser)
         c_events, c_err = company.scrape(cfg.get("companies", []), browser)
+        p_events, p_err = platforms.scrape(cfg.get("event_platforms", []), browser)
     finally:
         browser.close()
     h_events, h_err = hackathons.scrape(cfg.get("hackathon_sources", {}))
-    errors = l_err + c_err + h_err
+    errors = l_err + c_err + p_err + h_err
 
-    events = dedupe([e for e in h_events + l_events + c_events if keep(e, cfg)])
+    events = dedupe([e for e in h_events + p_events + l_events + c_events if keep(e, cfg)])
     seen = load_seen()
     ecfg = cfg.get("email", {})
     linkedin = [(c["name"], f"https://www.linkedin.com/company/{c['linkedin']}/events/")
