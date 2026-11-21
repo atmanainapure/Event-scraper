@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from urllib.parse import quote
 
 from dateutil import parser as dtparser
@@ -71,11 +72,10 @@ def _to_event(o: dict) -> Event | None:
     )
 
 
-def _scrape_page(url: str, label: str, browser: Browser) -> list[Event]:
+def _attempt(url: str, browser: Browser) -> dict[str, Event]:
     found: dict[str, Event] = {}
     try:
-        html = get(url)
-        for blob in extract_json_scripts(html):
+        for blob in extract_json_scripts(get(url)):
             _walk(blob, found)
     except Exception as e:  # noqa: BLE001
         log.info("Luma static fetch failed for %s: %s", url, e)
@@ -85,6 +85,19 @@ def _scrape_page(url: str, label: str, browser: Browser) -> list[Event]:
             html, payloads = rendered
             for blob in extract_json_scripts(html) + payloads:
                 _walk(blob, found)
+    return found
+
+
+def _scrape_page(url: str, label: str, browser: Browser, retries: int = 2) -> list[Event]:
+    # Luma's category pages sometimes come back empty (rate limiting / a
+    # client-only render); wait and try again before giving up.
+    found = _attempt(url, browser)
+    for i in range(retries):
+        if found:
+            break
+        time.sleep(10 * (i + 1))
+        log.info("Luma %s returned no events, retrying (%d/%d)", label, i + 1, retries)
+        found = _attempt(url, browser)
     for ev in found.values():
         ev.source = f"Luma ({label})"
         ev.extra["page"] = label
@@ -97,7 +110,10 @@ def scrape(cfg: dict, browser: Browser) -> tuple[list[Event], list[str]]:
     errors: list[str] = []
     for page in cfg.get("pages", []):
         try:
-            events += _scrape_page(f"{BASE}/{page}", page, browser)
+            got = _scrape_page(f"{BASE}/{page}", page, browser)
+            if not got:
+                errors.append(f"Luma page '{page}' returned no events after retries")
+            events += got
         except Exception as e:  # noqa: BLE001
             errors.append(f"Luma page '{page}': {e}")
     for term in cfg.get("search_terms", []):
