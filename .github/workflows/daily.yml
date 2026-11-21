@@ -1,21 +1,20 @@
 name: Daily event digest
 
+# The 8 AM New York email is started by a scheduled task that presses "Run workflow"
+# (workflow_dispatch) at 7:54 AM ET, because GitHub's own cron often starts hours late.
+# The cron below is only a backup: it sends nothing if today's email already went out.
 on:
   schedule:
-    - cron: "17 13 * * *" # every day at 13:17 UTC (~6am PT / 9am ET)
-  workflow_dispatch: # "Run workflow" button for manual runs
+    - cron: "37 14 * * *" # backup, ~9:37 AM EST / 10:37 AM EDT
+  workflow_dispatch: # "Run workflow" button
     inputs:
-      resend_all:
-        description: "Include events that were already emailed before"
-        type: boolean
-        default: false
       check_url:
         description: "Debug: explain whether this one event URL would be emailed (sends nothing)"
         type: string
         default: ""
 
 permissions:
-  contents: write # to commit data/seen.json so you never get the same event twice
+  contents: write # to commit data/ (events already emailed, last send date)
 
 concurrency:
   group: event-bot
@@ -48,15 +47,13 @@ jobs:
           SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CHECK_URL: ${{ inputs.check_url }}
-          RESEND_ALL: ${{ inputs.resend_all }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          # Fall back to Gmail defaults when the optional secrets are unset.
           export SMTP_HOST="${SMTP_HOST:-smtp.gmail.com}"
           export SMTP_PORT="${SMTP_PORT:-465}"
           if [ -n "$CHECK_URL" ]; then python -m event_bot --check-url "$CHECK_URL"; exit 0; fi
-          if [ "$RESEND_ALL" = "true" ]; then python -m event_bot --all; else python -m event_bot; fi
+          if [ "$EVENT_NAME" = "schedule" ]; then python -m event_bot --skip-if-sent; else python -m event_bot; fi
 
       - name: Save digest for review
         if: always()
@@ -71,6 +68,6 @@ jobs:
         run: |
           git config user.name "event-bot"
           git config user.email "event-bot@users.noreply.github.com"
-          git add data/seen.json
+          git add data/
           git diff --cached --quiet || git commit -m "chore: update seen events [skip ci]"
           git push

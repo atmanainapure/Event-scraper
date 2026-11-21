@@ -1,5 +1,10 @@
-"""Daily event bot: scrape Luma, company event pages, Google, Devpost and MLH;
-email the top NYC/NJ hackathons ranked by internship-networking ROI.
+"""Daily event bot.
+
+1. Find hackathons and networking events on Luma, Meetup and Cerebral Valley (NYC/NJ).
+2. Keep networking events that help with a tech internship or a strong network.
+3. Keep only events involving the top tech/AI companies (Google, Amazon, Meta, ...).
+4. If none of those is a hackathon, Google "<company> hackathon New York City" for each.
+5. Email everything at 8 AM New York time.
 
 Usage:
     python -m event_bot              # scrape and send email
@@ -13,16 +18,19 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import yaml
 
-from . import company, emailer, hackathons, luma, platforms, ranker
+from . import emailer, hackathons, luma, meetup, platforms, topcos
 from .classify import detect_kind, two_word_tag
 from .fetch import Browser
 from .models import Event
 
 ROOT = Path(__file__).resolve().parent.parent
 SEEN_PATH = ROOT / "data" / "seen.json"
+STATE_PATH = ROOT / "data" / "state.json"
+NY = ZoneInfo("America/New_York")
 log = logging.getLogger("event_bot")
 
 
@@ -48,19 +56,19 @@ def judge(ev: Event, cfg: dict) -> str | None:
         if start > now + timedelta(days=cfg.get("lookahead_days", 90)):
             return f"date {start.date()} is beyond lookahead_days"
     ev.kind = ev.extra.get("force_kind") or detect_kind(ev, cfg["keywords"])
-    if ev.source.startswith("Luma"):
-        if not ev.kind:
-            return "Luma event with no hackathon/networking/conference keyword"
-    elif not ev.kind:
-        ev.kind = "event"
+    if not ev.kind:
+        return "not a hackathon or networking event"
+    if ev.kind != "hackathon":
+        # Networking must be useful for a tech internship or professional network.
+        text = f"{ev.title} {ev.extra.get('organizer', '')} {ev.description}".lower()
+        if not re.search(cfg["networking_relevance"], text):
+            return "networking event not related to tech / careers"
     places = cfg.get("locations") or []
     if places:
         if ev.in_person is False:
             return "online event"
         if not in_area(ev, places):
             return "no NYC/NJ location found in location, title or description"
-    elif ev.kind != "hackathon" and ev.in_person is False:
-        return "online networking event"
     ev.tag = two_word_tag(ev)
     return None
 
@@ -106,11 +114,13 @@ def check_url(url: str, cfg: dict, browser: Browser) -> None:
     print(f"title: {ev.title}\nstart: {ev.start}\nlocation: {ev.location!r}\nin_person: {ev.in_person}")
     print(f"text sample: {ev.description[:400]!r}")
     reason = judge(ev, cfg)
+    print(f"top companies: {', '.join(topcos.match(ev, cfg['top_companies'])) or 'none'}")
     print(f"kind: {ev.kind or '-'}  tag: {ev.tag or '-'}")
     print("RESULT: KEPT" if reason is None else f"RESULT: DROPPED - {reason}")
     host = url.split("/")[2]
     covered = [p["name"] for p in cfg.get("event_platforms", []) if host in p["url"]] + \
-              [c["name"] for c in cfg.get("companies", []) if c.get("url") and host in c["url"]]
+              (["Luma"] if host.endswith(("luma.com", "lu.ma")) else []) + \
+              (["Meetup"] if host.endswith("meetup.com") else [])
     print("covered by source: " + (", ".join(covered) if covered else "NONE - this site is not scraped"))
 
 
@@ -120,10 +130,18 @@ def main() -> None:
     ap.add_argument("--no-browser", action="store_true", help="skip headless Chromium fallback")
     ap.add_argument("--all", action="store_true", help="include events already emailed before")
     ap.add_argument("--check-url", help="explain whether one event page would be kept, then exit")
+    ap.add_argument("--skip-if-sent", action="store_true",
+                    help="exit without doing anything if today's email already went out (backup schedule)")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     cfg = yaml.safe_load((ROOT / "config.yaml").read_text())
+    today_ny = datetime.now(NY).date().isoformat()
+    state = load_json(STATE_PATH)
+    if args.skip_if_sent and state.get("last_sent") == today_ny:
+        log.info("Today's email (%s) was already sent; nothing to do", today_ny)
+        return
+
     browser = Browser()
     if args.no_browser:
         browser.available = False
@@ -133,37 +151,56 @@ def main() -> None:
         finally:
             browser.close()
         return
+
+    # 1. Collect from Luma, Meetup and Cerebral Valley.
     try:
         l_events, l_err = luma.scrape(cfg.get("luma", {}), browser)
-        c_events, c_err = company.scrape(cfg.get("companies", []), browser)
+        m_events, m_err = meetup.scrape(cfg.get("meetup", {}), browser)
         p_events, p_err = platforms.scrape(cfg.get("event_platforms", []), browser)
     finally:
         browser.close()
-    h_events, h_err = hackathons.scrape(cfg.get("hackathon_sources", {}))
-    errors = l_err + c_err + p_err + h_err
+    errors = l_err + m_err + p_err
 
-    events = dedupe([e for e in h_events + p_events + l_events + c_events if keep(e, cfg)])
+    # 2. Hackathons + useful networking events in NYC/NJ.
+    events = dedupe([e for e in p_events + l_events + m_events if keep(e, cfg)])
+    # 3. Only those involving a top company.
+    companies = cfg["top_companies"]
+    for e in events:
+        e.extra["companies"] = topcos.match(e, companies)
+    top = [e for e in events if e.extra["companies"]]
+    hacks = [e for e in top if e.kind == "hackathon"]
+    nets = [e for e in top if e.kind != "hackathon"]
+    log.info("%d relevant NYC/NJ events; %d involve a top company (%d hackathons, %d networking)",
+             len(events), len(top), len(hacks), len(nets))
+
+    # 4. No top-company hackathon on the three sites -> Google each company.
+    leads: list[Event] = []
+    searched = False
+    if not hacks or cfg.get("google_fallback", {}).get("always"):
+        searched = True
+        raw, g_err = hackathons.company_leads(companies, cfg.get("google_fallback", {}))
+        errors += g_err
+        known = {e.key for e in top}
+        for e in raw:
+            if e.key in known:
+                continue
+            reason = judge(e, cfg)
+            # Google results often have no address; the query was already NYC-specific,
+            # so only drop a lead for location when it has an address outside NYC/NJ.
+            no_address = reason and reason.startswith("no NYC/NJ location") and not e.location
+            if reason and not no_address:
+                continue
+            e.extra["companies"] = topcos.match(e, companies)
+            e.tag = two_word_tag(e)
+            leads.append(e)
+        leads = dedupe(leads)
+        log.info("Google fallback: %d leads", len(leads))
+
+    # 5. Email.
     seen = load_seen()
-    ecfg = cfg.get("email", {})
-    linkedin = [(c["name"], f"https://www.linkedin.com/company/{c['linkedin']}/events/")
-                for c in cfg.get("companies", []) if c.get("linkedin")]
-
-    if ecfg.get("mode", "top_hackathons") == "top_hackathons":
-        hacks = [e for e in events if e.kind == "hackathon"]
-        top, method = ranker.rank(hacks, cfg.get("ranking", {}), int(ecfg.get("top_n", 5)))
-        new_keys = {r.event.key for r in top if r.event.key not in seen}
-        log.info("%d NYC/NJ hackathons found; top %d ranked by %s (%d new)",
-                 len(hacks), len(top), method, len(new_keys))
-        subject, text, html_body = emailer.build_ranked(top, new_keys, len(hacks), method, errors)
-        to_mark = [r.event for r in top]
-        should_send = bool(top) or cfg.get("email_when_empty", True)
-    else:
-        new = events if args.all else [e for e in events if e.key not in seen]
-        log.info("%d relevant events, %d new", len(events), len(new))
-        subject, text, html_body = emailer.build(new, linkedin, errors)
-        to_mark = new
-        should_send = bool(new) or cfg.get("email_when_empty", True)
-
+    new_keys = {e.key for e in hacks + nets + leads if e.key not in seen}
+    subject, text, html_body = emailer.build_daily(hacks, nets, leads, searched, new_keys,
+                                                    [c["name"] for c in companies], errors)
     out = ROOT / "out"
     out.mkdir(exist_ok=True)
     (out / "digest.html").write_text(html_body)
@@ -172,13 +209,20 @@ def main() -> None:
         log.info("Dry run: wrote %s", out / "digest.html")
         return
 
-    if should_send:
-        emailer.send(subject, text, html_body)
-        log.info("Email sent: %s", subject)
-    today = datetime.now(timezone.utc).date().isoformat()
-    for e in to_mark:
-        seen.setdefault(e.key, today)
+    emailer.send(subject, text, html_body)
+    log.info("Email sent: %s", subject)
+    for e in hacks + nets + leads:
+        seen.setdefault(e.key, today_ny)
     save_seen(seen)
+    state["last_sent"] = today_ny
+    STATE_PATH.write_text(json.dumps(state, indent=1))
+
+
+def load_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text())
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 if __name__ == "__main__":

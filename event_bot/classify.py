@@ -69,5 +69,6 @@ def two_word_tag(ev: Event) -> str:
     if ev.kind == "networking":
         label = next((lbl for pat, lbl in NETWORKING_LABELS if re.search(pat, text)), label)
     if not topic:
-        topic = ev.source.split(" ")[0] if not ev.source.startswith("Luma") else "Tech"
+        cos = ev.extra.get("companies") or ([ev.extra["lead_for"]] if ev.extra.get("lead_for") else [])
+        topic = cos[0] if cos else "Tech"
     return f"{topic} {label}"

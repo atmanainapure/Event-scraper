@@ -18,7 +18,21 @@ API_HOSTS = ("api.lu.ma", "api2.luma.com", "api.luma.com")
 def _walk(obj, found: dict) -> None:
     """Recursively find Luma event objects in arbitrary JSON."""
     if isinstance(obj, dict):
-        if isinstance(obj.get("name"), str) and obj.get("start_at") and isinstance(obj.get("url"), str):
+        inner = obj.get("event")
+        if isinstance(inner, dict) and isinstance(inner.get("name"), str) and inner.get("start_at") \
+                and isinstance(inner.get("url"), str):
+            # Listing entries wrap the event with its hosts and calendar; keep those
+            # names so "Hosted by Google DeepMind" counts as a company match.
+            ev = _to_event(inner)
+            if ev:
+                hosts = [h.get("name", "") for h in obj.get("hosts") or [] if isinstance(h, dict)]
+                cal = (obj.get("calendar") or {}).get("name", "") if isinstance(obj.get("calendar"), dict) else ""
+                org = ", ".join(x for x in hosts + [cal] if x)
+                ev.extra["organizer"] = org
+                if org:
+                    ev.description = f"Hosted by {org}. {ev.description}".strip()
+                found.setdefault(ev.key, ev)
+        elif isinstance(obj.get("name"), str) and obj.get("start_at") and isinstance(obj.get("url"), str):
             ev = _to_event(obj)
             if ev:
                 found.setdefault(ev.key, ev)

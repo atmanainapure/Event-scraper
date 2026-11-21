@@ -10,12 +10,6 @@ from email.message import EmailMessage
 
 from .models import Event
 
-SECTIONS = [
-    ("hackathon", "🛠️ Hackathons"),
-    ("networking", "🍻 In-person networking, mixers & meetups"),
-    ("conference", "🎤 Conferences & summits"),
-    ("event", "📅 Other upcoming company events"),
-]
 
 
 def _when(ev: Event) -> str:
@@ -30,106 +24,73 @@ def _where(ev: Event) -> str:
     return ""
 
 
-def build(events: list[Event], linkedin_links: list[tuple[str, str]], errors: list[str]) -> tuple[str, str, str]:
-    today = datetime.now().strftime("%b %d, %Y")
-    counts = {k: sum(1 for e in events if e.kind == k) for k, _ in SECTIONS}
-    if events:
-        subject = f"🗓️ {len(events)} new events ({counts['hackathon']} hackathons) – {today}"
-    else:
-        subject = f"🗓️ No new events today – {today}"
-
-    text_lines = [f"Event bot digest for {today}", ""]
-    h = [
-        "<div style='font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;color:#222'>",
-        f"<h2 style='margin-bottom:4px'>Event digest · {html.escape(today)}</h2>",
-        f"<p style='color:#666;margin-top:0'>{len(events)} new event(s) found on Luma and company event pages.</p>",
-    ]
-    if not events:
-        h.append("<p>Nothing new since the last run. The bot is alive and checked all sources.</p>")
-        text_lines.append("Nothing new since the last run.")
-
-    for kind, heading in SECTIONS:
-        items = sorted((e for e in events if e.kind == kind),
-                       key=lambda e: (e.start is None, e.start.timestamp() if e.start else 0))
-        if not items:
-            continue
-        h.append(f"<h3 style='border-bottom:1px solid #eee;padding-bottom:4px'>{heading} ({len(items)})</h3><ul style='padding-left:18px'>")
-        text_lines.append(f"== {heading} ==")
-        for e in items:
-            meta = " · ".join(x for x in (_when(e), _where(e), e.source) if x)
-            h.append(
-                "<li style='margin-bottom:10px'>"
-                f"<span style='background:#eef3ff;color:#2952cc;border-radius:4px;padding:1px 6px;font-size:12px;font-weight:600'>{html.escape(e.tag)}</span> "
-                f"<a href='{html.escape(e.url, quote=True)}' style='font-weight:600;color:#111'>{html.escape(e.title)}</a><br>"
-                f"<span style='color:#666;font-size:13px'>{html.escape(meta)}</span></li>"
-            )
-            text_lines.append(f"- [{e.tag}] {e.title}\n  {meta}\n  {e.url}")
-        h.append("</ul>")
-        text_lines.append("")
-
-    if linkedin_links:
-        h.append("<h3 style='border-bottom:1px solid #eee;padding-bottom:4px'>🔗 LinkedIn company event pages</h3>"
-                 "<p style='color:#666;font-size:13px'>LinkedIn requires a login, so these are one-click links to check yourself.</p>"
-                 "<p style='font-size:13px;line-height:1.8'>")
-        h.append(" · ".join(f"<a href='{html.escape(u, quote=True)}'>{html.escape(n)}</a>" for n, u in linkedin_links))
-        h.append("</p>")
-        text_lines.append("LinkedIn event pages:")
-        text_lines += [f"- {n}: {u}" for n, u in linkedin_links]
-        text_lines.append("")
-
-    if errors:
-        h.append("<details style='color:#999;font-size:12px'><summary>Sources that failed this run "
-                 f"({len(errors)})</summary><ul>")
-        h += [f"<li>{html.escape(err)}</li>" for err in errors]
-        h.append("</ul></details>")
-        text_lines.append(f"{len(errors)} source(s) failed: " + "; ".join(errors))
-
-    h.append("</div>")
-    return subject, "\n".join(text_lines), "\n".join(h)
-
-
-def build_ranked(top, new_keys: set, total: int, method: str, errors: list[str]) -> tuple[str, str, str]:
-    """Email with only the top-N hackathons ranked by internship-networking ROI."""
-    today = datetime.now().strftime("%b %d, %Y")
-    n_new = sum(1 for r in top if r.event.key in new_keys)
-    if not top:
-        subject = f"🏆 No upcoming NYC/NJ hackathons found – {today}"
-    elif n_new:
-        subject = f"🏆 Top {len(top)} NYC/NJ hackathons for internship networking ({n_new} new) – {today}"
-    else:
-        subject = f"🏆 Your top {len(top)} NYC/NJ hackathons (no change) – {today}"
-    how = "ranked by Claude" if method == "Claude" else "ranked by sponsor, recruiting, size and student-focus signals"
-    h = [
-        "<div style='font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;color:#222'>",
-        f"<h2 style='margin-bottom:4px'>Top {len(top)} hackathons for internship networking</h2>",
-        f"<p style='color:#666;margin-top:0'>In-person, NYC &amp; New Jersey · {total} upcoming hackathons "
-        f"found on Google, Devpost, MLH, Luma and company pages · {html.escape(how)} · {html.escape(today)}</p>",
-    ]
-    t = [f"Top {len(top)} NYC/NJ hackathons for internship networking – {today}", f"({total} found, {how})", ""]
-    if not top:
-        h.append("<p>No upcoming in-person hackathons in NYC/NJ were found today.</p>")
-        t.append("No upcoming in-person hackathons in NYC/NJ were found today.")
-    h.append("<ol style='padding-left:20px'>")
-    for r in top:
-        e = r.event
-        meta = " · ".join(x for x in (_when(e), _where(e), e.source) if x)
-        badge = ("<span style='background:#e6f7ec;color:#137333;border-radius:4px;padding:1px 6px;"
-                 "font-size:11px;font-weight:700;margin-right:4px'>NEW</span>") if e.key in new_keys else ""
-        h.append(
-            "<li style='margin-bottom:14px'>"
+def _item_html(e, new_keys) -> str:
+    meta = " · ".join(x for x in (_when(e), _where(e), e.source) if x)
+    cos = ", ".join(e.extra.get("companies") or [])
+    badge = ("<span style='background:#e6f7ec;color:#137333;border-radius:4px;padding:1px 6px;"
+             "font-size:11px;font-weight:700;margin-right:4px'>NEW</span>") if e.key in new_keys else ""
+    return ("<li style='margin-bottom:12px'>"
             f"{badge}<span style='background:#eef3ff;color:#2952cc;border-radius:4px;padding:1px 6px;font-size:12px;font-weight:600'>{html.escape(e.tag)}</span> "
             f"<a href='{html.escape(e.url, quote=True)}' style='font-weight:600;color:#111'>{html.escape(e.title)}</a><br>"
-            f"<span style='color:#666;font-size:13px'>{html.escape(meta)}</span><br>"
-            f"<span style='font-size:13px'><b>Why it's worth it:</b> {html.escape(r.reason)}</span></li>"
-        )
-        t.append(f"{'[NEW] ' if e.key in new_keys else ''}[{e.tag}] {e.title}\n  {meta}\n  Why: {r.reason}\n  {e.url}")
-    h.append("</ol>")
+            f"<span style='color:#666;font-size:13px'>{html.escape(meta)}</span>"
+            + (f"<br><span style='font-size:13px'><b>Company:</b> {html.escape(cos)}</span>" if cos else "")
+            + "</li>")
+
+
+def _item_text(e, new_keys) -> str:
+    meta = " · ".join(x for x in (_when(e), _where(e), e.source) if x)
+    cos = ", ".join(e.extra.get("companies") or [])
+    return (f"- {'[NEW] ' if e.key in new_keys else ''}[{e.tag}] {e.title}\n  {meta}"
+            + (f"\n  Company: {cos}" if cos else "") + f"\n  {e.url}")
+
+
+def build_daily(hacks, nets, leads, searched: bool, new_keys: set, company_names: list[str],
+                errors: list[str]) -> tuple[str, str, str]:
+    """Morning email: top-company hackathons and networking from Luma / Meetup / Cerebral
+    Valley, plus Google leads when no top-company hackathon was found there."""
+    today = datetime.now().strftime("%a %b %d")
+    order = lambda e: (e.start is None, e.start.timestamp() if e.start else 0)  # noqa: E731
+    n_new = sum(1 for e in hacks + nets + leads if e.key in new_keys)
+    total = len(hacks) + len(nets) + len(leads)
+    subject = (f"☀️ {len(hacks)} hackathons, {len(nets)} networking events with top tech companies"
+               + (f", {len(leads)} Google leads" if leads else "") + (f" ({n_new} new)" if n_new else "")
+               + f" – {today}") if total else f"☀️ No top-company hackathons or networking in NYC today – {today}"
+    cos = ", ".join(company_names)
+    h = ["<div style='font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;color:#222'>",
+         f"<h2 style='margin-bottom:4px'>Your morning event brief · {html.escape(today)}</h2>",
+         f"<p style='color:#666;margin-top:0'>In-person NYC/NJ events on Luma, Meetup and Cerebral Valley "
+         f"involving: {html.escape(cos)}.</p>"]
+    t = [f"Morning event brief – {today}", f"Companies: {cos}", ""]
+
+    def section(title, items, empty):
+        h.append(f"<h3 style='border-bottom:1px solid #eee;padding-bottom:4px'>{title} ({len(items)})</h3>")
+        t.append(f"== {title} ({len(items)}) ==")
+        if not items:
+            h.append(f"<p style='color:#666'>{html.escape(empty)}</p>")
+            t.append(empty)
+        else:
+            h.append("<ul style='padding-left:18px'>")
+            for e in sorted(items, key=order):
+                h.append(_item_html(e, new_keys))
+                t.append(_item_text(e, new_keys))
+            h.append("</ul>")
+        t.append("")
+
+    section("🛠️ Hackathons with top companies", hacks,
+            "None on Luma, Meetup or Cerebral Valley today, so I searched Google for each company below.")
+    section("🤝 Networking events with top companies", nets,
+            "None found on Luma, Meetup or Cerebral Valley today.")
+    if searched:
+        section("🔎 Google leads: \"[company] hackathon New York City\"", leads,
+                "Google search found no upcoming NYC hackathons from these companies."
+                if not any("Google fallback search is off" in e for e in errors)
+                else "Google search is not set up yet (needs a SERPAPI_KEY secret).")
     if errors:
-        h.append("<details style='color:#999;font-size:12px'><summary>Sources that failed this run "
+        h.append("<details style='color:#999;font-size:12px'><summary>Sources with problems this run "
                  f"({len(errors)})</summary><ul>")
         h += [f"<li>{html.escape(err)}</li>" for err in errors]
         h.append("</ul></details>")
-        t.append(f"\n{len(errors)} source(s) failed: " + "; ".join(errors))
+        t.append(f"{len(errors)} source problem(s): " + "; ".join(errors))
     h.append("</div>")
     return subject, "\n".join(t), "\n".join(h)
 
