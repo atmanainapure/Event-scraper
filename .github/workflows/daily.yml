@@ -1,11 +1,15 @@
 name: Daily event digest
 
-# The 8 AM New York email is started by a scheduled task that presses "Run workflow"
-# (workflow_dispatch) at 7:54 AM ET, because GitHub's own cron often starts hours late.
-# The cron below is only a backup: it sends nothing if today's email already went out.
+# Goal: the email arrives at 8:00 AM New York time.
+#  - 11:50 UTC = 7:50 AM EDT (summer), 12:50 UTC = 7:50 AM EST (winter). The run that
+#    lands at ~7:50 scrapes, then waits until 8:00 to send. The other one is skipped.
+#  - GitHub sometimes starts scheduled runs late; the later runs are backups that
+#    send only if today's email hasn't gone out yet (data/state.json).
 on:
   schedule:
-    - cron: "37 14 * * *" # backup, ~9:37 AM EST / 10:37 AM EDT
+    - cron: "50 11 * * *"
+    - cron: "50 12 * * *"
+    - cron: "20 14,16,18,20,22 * * *" # backups
   workflow_dispatch: # "Run workflow" button
     inputs:
       check_url:
@@ -27,17 +31,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Should this scheduled run send today's email?
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then echo "go=$(python3 scripts/gate.py)" >> "$GITHUB_OUTPUT"; else echo "go=run" >> "$GITHUB_OUTPUT"; fi
+
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.go == 'run'
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Install dependencies
+        if: steps.gate.outputs.go == 'run'
         run: |
           pip install -r requirements.txt
           python -m playwright install --with-deps chromium
 
       - name: Scrape and email
+        if: steps.gate.outputs.go == 'run'
         env:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -53,10 +65,10 @@ jobs:
           export SMTP_HOST="${SMTP_HOST:-smtp.gmail.com}"
           export SMTP_PORT="${SMTP_PORT:-465}"
           if [ -n "$CHECK_URL" ]; then python -m event_bot --check-url "$CHECK_URL"; exit 0; fi
-          if [ "$EVENT_NAME" = "schedule" ]; then python -m event_bot --skip-if-sent; else python -m event_bot; fi
+          if [ "$EVENT_NAME" = "schedule" ]; then python -m event_bot --skip-if-sent --send-at 08:00; else python -m event_bot; fi
 
       - name: Save digest for review
-        if: always()
+        if: always() && steps.gate.outputs.go == 'run'
         uses: actions/upload-artifact@v4
         with:
           name: digest
@@ -65,9 +77,10 @@ jobs:
           retention-days: 14
 
       - name: Remember emailed events
+        if: steps.gate.outputs.go == 'run'
         run: |
           git config user.name "event-bot"
           git config user.email "event-bot@users.noreply.github.com"
           git add data/
           git diff --cached --quiet || git commit -m "chore: update seen events [skip ci]"
-          git push
+          git pull --rebase origin "${GITHUB_REF_NAME}" && git push

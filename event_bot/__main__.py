@@ -16,6 +16,7 @@ import argparse
 import json
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -132,6 +133,7 @@ def main() -> None:
     ap.add_argument("--check-url", help="explain whether one event page would be kept, then exit")
     ap.add_argument("--skip-if-sent", action="store_true",
                     help="exit without doing anything if today's email already went out (backup schedule)")
+    ap.add_argument("--send-at", help="HH:MM New York time: if earlier, wait until then before sending (max 30 min)")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -209,6 +211,14 @@ def main() -> None:
         log.info("Dry run: wrote %s", out / "digest.html")
         return
 
+    if args.send_at:
+        hh, mm = map(int, args.send_at.split(":"))
+        now = datetime.now(NY)
+        target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        wait = (target - now).total_seconds()
+        if 0 < wait <= 1800:
+            log.info("Waiting %.0f s to send at %s New York time", wait, args.send_at)
+            time.sleep(wait)
     emailer.send(subject, text, html_body)
     log.info("Email sent: %s", subject)
     for e in hacks + nets + leads:
