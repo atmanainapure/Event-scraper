@@ -12,6 +12,10 @@ on:
     - cron: "20 14,16,18,20,22 * * *" # backups
   workflow_dispatch: # "Run workflow" button
     inputs:
+      preview:
+        description: "Preview only: print the email in the run log, send nothing"
+        type: boolean
+        default: false
       check_url:
         description: "Debug: explain whether this one event URL would be emailed (sends nothing)"
         type: string
@@ -60,11 +64,13 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
           CHECK_URL: ${{ inputs.check_url }}
+          PREVIEW: ${{ inputs.preview }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           export SMTP_HOST="${SMTP_HOST:-smtp.gmail.com}"
           export SMTP_PORT="${SMTP_PORT:-465}"
           if [ -n "$CHECK_URL" ]; then python -m event_bot --check-url "$CHECK_URL"; exit 0; fi
+          if [ "$PREVIEW" = "true" ]; then python -m event_bot --dry-run; cat out/digest.txt; exit 0; fi
           if [ "$EVENT_NAME" = "schedule" ]; then python -m event_bot --skip-if-sent --send-at 08:00; else python -m event_bot; fi
 
       - name: Save digest for review
